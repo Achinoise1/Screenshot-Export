@@ -5,6 +5,4 @@ Pillow
 python-docx
 fastapi
 uvicorn[standard]
-nicegui
 python-multipart
-httpx[socks]

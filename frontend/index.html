@@ -1,0 +1,595 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>视频截图提取</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    /* 自定义滚动条 */
+    #log::-webkit-scrollbar { width: 4px; }
+    #log::-webkit-scrollbar-track { background: #1e293b; }
+    #log::-webkit-scrollbar-thumb { background: #475569; border-radius: 2px; }
+
+    /* 拖拽高亮 */
+    #drop-zone.dragover {
+      border-color: #6366f1;
+      background-color: #eef2ff;
+    }
+
+    /* 状态徽章 */
+    .badge-pending    { @apply bg-slate-100 text-slate-600; }
+    .badge-processing { @apply bg-blue-100 text-blue-700; }
+    .badge-ready      { @apply bg-yellow-100 text-yellow-700; }
+    .badge-generating { @apply bg-purple-100 text-purple-700; }
+    .badge-done       { @apply bg-green-100 text-green-700; }
+    .badge-error      { @apply bg-red-100 text-red-700; }
+  </style>
+</head>
+<body class="bg-slate-50 min-h-screen text-slate-800">
+
+<!-- ── Header ────────────────────────────────────────── -->
+<header class="bg-white border-b border-slate-200 shadow-sm sticky top-0 z-10">
+  <div class="max-w-5xl mx-auto px-6 py-4 flex items-center justify-between">
+    <div class="flex items-center gap-3">
+      <span class="text-2xl">🎬</span>
+      <h1 class="text-xl font-bold text-slate-900">视频截图提取</h1>
+    </div>
+    <button id="btn-history"
+      class="flex items-center gap-2 text-sm px-4 py-2 rounded-lg border border-slate-200
+             hover:bg-slate-50 transition-colors text-slate-600 font-medium">
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M12 8v4l3 3m6-3a9 9 0 11-18 0 9 9 0 0118 0z"/>
+      </svg>
+      历史记录
+    </button>
+  </div>
+</header>
+
+<main class="max-w-5xl mx-auto px-6 py-8 space-y-6">
+
+  <!-- ── 上传区 ──────────────────────────────────────── -->
+  <section class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6">
+    <h2 class="text-base font-semibold text-slate-700 mb-4">上传视频</h2>
+    <div id="drop-zone"
+      class="border-2 border-dashed border-slate-300 rounded-xl p-10 text-center
+             cursor-pointer transition-colors hover:border-indigo-400 hover:bg-indigo-50/50">
+      <input id="file-input" type="file" accept="video/*" class="hidden" />
+      <svg class="w-10 h-10 mx-auto mb-3 text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5"
+          d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/>
+      </svg>
+      <p class="text-slate-500 text-sm">拖拽视频到此处，或 <span class="text-indigo-600 font-medium">点击选择</span></p>
+      <p id="file-label" class="mt-2 text-xs text-slate-400">支持 mp4、mov、avi、mkv、webm</p>
+    </div>
+  </section>
+
+  <!-- ── 参数 ─────────────────────────────────────────── -->
+  <section class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden">
+    <button id="params-toggle"
+      class="w-full flex items-center justify-between px-6 py-4 text-left
+             hover:bg-slate-50 transition-colors">
+      <span class="text-base font-semibold text-slate-700">处理参数</span>
+      <svg id="params-chevron" class="w-4 h-4 text-slate-400 transition-transform duration-200 rotate-180"
+        fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/>
+      </svg>
+    </button>
+    <div id="params-body" class="px-6 pb-6">
+      <div class="grid grid-cols-2 gap-4">
+        <label class="flex flex-col gap-1">
+          <span class="text-xs font-medium text-slate-500 uppercase tracking-wide">每秒采样帧数</span>
+          <input id="p-fps" type="number" value="5" min="1" max="30"
+            class="px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none
+                   focus:ring-2 focus:ring-indigo-400 focus:border-transparent"/>
+        </label>
+        <label class="flex flex-col gap-1">
+          <span class="text-xs font-medium text-slate-500 uppercase tracking-wide">帧差阈值</span>
+          <input id="p-threshold" type="number" value="3" min="0.1" max="50" step="0.5"
+            class="px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none
+                   focus:ring-2 focus:ring-indigo-400 focus:border-transparent"/>
+        </label>
+        <label class="flex flex-col gap-1">
+          <span class="text-xs font-medium text-slate-500 uppercase tracking-wide">连续稳定秒数</span>
+          <input id="p-stable" type="number" value="2" min="0.5" max="10" step="0.5"
+            class="px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none
+                   focus:ring-2 focus:ring-indigo-400 focus:border-transparent"/>
+        </label>
+        <label class="flex flex-col gap-1">
+          <span class="text-xs font-medium text-slate-500 uppercase tracking-wide">哈希去重阈值</span>
+          <input id="p-hash" type="number" value="5" min="1" max="30"
+            class="px-3 py-2 rounded-lg border border-slate-200 text-sm focus:outline-none
+                   focus:ring-2 focus:ring-indigo-400 focus:border-transparent"/>
+        </label>
+      </div>
+    </div>
+  </section>
+
+  <!-- ── 操作按钮 ───────────────────────────────────────── -->
+  <div class="flex gap-3">
+    <button id="btn-start"
+      class="flex-1 flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-semibold
+             text-white bg-indigo-600 hover:bg-indigo-700 disabled:opacity-40 disabled:cursor-not-allowed
+             transition-colors shadow-sm shadow-indigo-200" disabled>
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M14.752 11.168l-3.197-2.132A1 1 0 0010 9.87v4.263a1 1 0 001.555.832l3.197-2.132a1 1 0 000-1.664z"/>
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/>
+      </svg>
+      开始处理
+    </button>
+    <button id="btn-generate"
+      class="flex-1 flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-semibold
+             text-white bg-violet-600 hover:bg-violet-700 disabled:opacity-40 disabled:cursor-not-allowed
+             transition-colors shadow-sm shadow-violet-200" disabled>
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414
+             5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z"/>
+      </svg>
+      生成 DOCX
+    </button>
+    <button id="btn-download"
+      class="flex-1 flex items-center justify-center gap-2 px-5 py-3 rounded-xl font-semibold
+             text-white bg-emerald-600 hover:bg-emerald-700 disabled:opacity-40 disabled:cursor-not-allowed
+             transition-colors shadow-sm shadow-emerald-200" disabled>
+      <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+          d="M4 16v1a3 3 0 003 3h10a3 3 0 003-3v-1m-4-4l-4 4m0 0l-4-4m4 4V4"/>
+      </svg>
+      下载 DOCX
+    </button>
+  </div>
+
+  <!-- 状态栏 -->
+  <p id="status-label" class="text-center text-sm text-slate-500 h-4"></p>
+
+  <!-- ── 进度区 ─────────────────────────────────────────── -->
+  <section id="progress-section" class="bg-white rounded-2xl border border-slate-200 shadow-sm p-6 space-y-3 hidden">
+    <h2 class="text-base font-semibold text-slate-700">处理进度</h2>
+    <div class="w-full bg-slate-100 rounded-full h-2 overflow-hidden">
+      <div id="progress-bar" class="bg-indigo-500 h-2 rounded-full transition-all duration-300" style="width:0%"></div>
+    </div>
+    <div id="log"
+      class="bg-slate-900 text-slate-300 rounded-xl p-4 h-40 overflow-y-auto
+             font-mono text-xs leading-relaxed whitespace-pre-wrap"></div>
+  </section>
+
+  <!-- ── 截图预览 ────────────────────────────────────────── -->
+  <section id="preview-section" class="bg-white rounded-2xl border border-slate-200 shadow-sm overflow-hidden hidden">
+    <div class="px-6 py-4 border-b border-slate-100 flex items-center justify-between">
+      <h2 class="text-base font-semibold text-slate-700">截图预览 <span id="preview-count" class="text-slate-400 font-normal text-sm"></span></h2>
+      <div class="flex items-center gap-2">
+        <button id="btn-prev"
+          class="p-1.5 rounded-lg hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors" disabled>
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 19l-7-7 7-7"/>
+          </svg>
+        </button>
+        <span id="page-label" class="text-xs text-slate-500 min-w-16 text-center"></span>
+        <button id="btn-next"
+          class="p-1.5 rounded-lg hover:bg-slate-100 disabled:opacity-30 disabled:cursor-not-allowed transition-colors" disabled>
+          <svg class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/>
+          </svg>
+        </button>
+      </div>
+    </div>
+    <div id="preview-grid" class="p-4 grid grid-cols-3 gap-3"></div>
+  </section>
+
+</main>
+
+<!-- ── 历史记录侧栏 ─────────────────────────────────────── -->
+<div id="history-overlay"
+  class="fixed inset-0 bg-black/30 z-40 hidden"
+  onclick="closeHistory()"></div>
+
+<aside id="history-panel"
+  class="fixed top-0 right-0 h-full w-full max-w-xl bg-white shadow-2xl z-50
+         translate-x-full transition-transform duration-300 flex flex-col">
+  <div class="flex items-center justify-between px-6 py-5 border-b border-slate-200">
+    <h2 class="text-lg font-bold text-slate-800">历史记录</h2>
+    <button onclick="closeHistory()"
+      class="p-2 rounded-lg hover:bg-slate-100 transition-colors text-slate-500">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M6 18L18 6M6 6l12 12"/>
+      </svg>
+    </button>
+  </div>
+  <div id="history-list" class="flex-1 overflow-y-auto divide-y divide-slate-100"></div>
+</aside>
+
+<!-- ── Toast 提示 ─────────────────────────────────────── -->
+<div id="toast"
+  class="fixed bottom-6 left-1/2 -translate-x-1/2 px-5 py-3 rounded-xl text-sm font-medium
+         text-white shadow-lg z-50 opacity-0 transition-all duration-300 pointer-events-none">
+</div>
+
+<script>
+// ── 状态 ────────────────────────────────────────────────
+let jobId = null;
+let fileBytes = null;
+let filename = '';
+let allScreenshots = [];
+let currentPage = 0;
+const PAGE_SIZE = 6;
+
+// ── DOM 引用 ─────────────────────────────────────────────
+const dropZone      = document.getElementById('drop-zone');
+const fileInput     = document.getElementById('file-input');
+const fileLabel     = document.getElementById('file-label');
+const btnStart      = document.getElementById('btn-start');
+const btnGenerate   = document.getElementById('btn-generate');
+const btnDownload   = document.getElementById('btn-download');
+const statusLabel   = document.getElementById('status-label');
+const progressSection = document.getElementById('progress-section');
+const progressBar   = document.getElementById('progress-bar');
+const log           = document.getElementById('log');
+const previewSection = document.getElementById('preview-section');
+const previewGrid   = document.getElementById('preview-grid');
+const previewCount  = document.getElementById('preview-count');
+const pageLabel     = document.getElementById('page-label');
+const btnPrev       = document.getElementById('btn-prev');
+const btnNext       = document.getElementById('btn-next');
+const historyPanel  = document.getElementById('history-panel');
+const historyOverlay = document.getElementById('history-overlay');
+const historyList   = document.getElementById('history-list');
+
+// ── 参数折叠 ─────────────────────────────────────────────
+const paramsToggle  = document.getElementById('params-toggle');
+const paramsBody    = document.getElementById('params-body');
+const paramsChevron = document.getElementById('params-chevron');
+paramsToggle.addEventListener('click', () => {
+  const open = !paramsBody.classList.contains('hidden');
+  paramsBody.classList.toggle('hidden', open);
+  paramsChevron.style.transform = open ? 'rotate(0deg)' : 'rotate(180deg)';
+});
+
+// ── 上传 ─────────────────────────────────────────────────
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', e => {
+  e.preventDefault();
+  dropZone.classList.remove('dragover');
+  const f = e.dataTransfer.files[0];
+  if (f) handleFile(f);
+});
+fileInput.addEventListener('change', e => {
+  const f = e.target.files[0];
+  if (f) handleFile(f);
+});
+
+function handleFile(f) {
+  filename = f.name;
+  const reader = new FileReader();
+  reader.onload = ev => {
+    fileBytes = ev.target.result;
+    const mb = (f.size / 1024 / 1024).toFixed(1);
+    fileLabel.textContent = `已选择：${f.name}（${mb} MB）`;
+    fileLabel.className = 'mt-2 text-xs text-indigo-600 font-medium';
+    btnStart.disabled = false;
+  };
+  reader.readAsArrayBuffer(f);
+}
+
+// ── 开始处理 ─────────────────────────────────────────────
+btnStart.addEventListener('click', async () => {
+  if (!fileBytes) return;
+
+  setButtons({ start: false, generate: false, download: false });
+  logClear();
+  setProgress(0);
+  allScreenshots = [];
+  currentPage = 0;
+  previewGrid.innerHTML = '';
+  previewSection.classList.add('hidden');
+  progressSection.classList.remove('hidden');
+  setStatus('正在上传视频…');
+
+  try {
+    const blob = new Blob([fileBytes]);
+    const form = new FormData();
+    form.append('file', blob, filename);
+
+    const uploadRes = await fetch('./jobs/upload', { method: 'POST', body: form });
+    if (!uploadRes.ok) throw new Error((await uploadRes.json()).detail);
+    const { job_id } = await uploadRes.json();
+    jobId = job_id;
+
+    setStatus('上传成功，启动处理…');
+
+    const params = {
+      sample_fps:       parseInt(document.getElementById('p-fps').value),
+      change_threshold: parseFloat(document.getElementById('p-threshold').value),
+      stable_seconds:   parseFloat(document.getElementById('p-stable').value),
+      hash_threshold:   parseInt(document.getElementById('p-hash').value),
+    };
+    const procRes = await fetch(`./jobs/${jobId}/process`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    if (!procRes.ok) throw new Error((await procRes.json()).detail);
+
+    listenSSE(jobId);
+  } catch (err) {
+    showToast(`错误：${err.message}`, 'error');
+    setStatus(`错误：${err.message}`);
+    setButtons({ start: true });
+  }
+});
+
+// ── SSE 进度 ─────────────────────────────────────────────
+function listenSSE(jid) {
+  setStatus('处理中…');
+  const es = new EventSource(`./jobs/${jid}/progress`);
+
+  es.onmessage = async e => {
+    const ev = JSON.parse(e.data);
+
+    if (ev.type === 'progress') {
+      if (ev.total > 0) setProgress(ev.current / ev.total * 100);
+      logAppend(`${ev.message}  [已保存 ${ev.saved} 张]`);
+
+    } else if (ev.type === 'done') {
+      es.close();
+      setProgress(100);
+      logAppend(`✓ 处理完成，共提取 ${ev.saved} 张截图`);
+      setStatus(`处理完成，共 ${ev.saved} 张截图`);
+      setButtons({ generate: true });
+      await loadScreenshots(jid);
+
+    } else if (ev.type === 'error') {
+      es.close();
+      logAppend(`✗ 错误：${ev.message}`);
+      setStatus(`处理失败：${ev.message}`);
+      showToast(`处理失败：${ev.message}`, 'error');
+      setButtons({ start: true });
+    }
+  };
+
+  es.onerror = () => {
+    es.close();
+    setStatus('SSE 连接断开');
+    setButtons({ start: true });
+  };
+}
+
+// ── 截图预览 ─────────────────────────────────────────────
+async function loadScreenshots(jid) {
+  const res = await fetch(`./jobs/${jid}/screenshots`);
+  if (!res.ok) return;
+  const data = await res.json();
+  allScreenshots = data.screenshots;
+  currentPage = 0;
+  previewSection.classList.remove('hidden');
+  previewCount.textContent = `（共 ${allScreenshots.length} 张）`;
+  renderPage(jid);
+}
+
+function renderPage(jid) {
+  const total = allScreenshots.length;
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
+  const start = currentPage * PAGE_SIZE;
+  const pageFiles = allScreenshots.slice(start, start + PAGE_SIZE);
+
+  previewGrid.innerHTML = '';
+  pageFiles.forEach(name => {
+    const url = `./jobs/${jid}/screenshots/${name}`;
+    const card = document.createElement('div');
+    card.className = 'rounded-lg overflow-hidden border border-slate-200 bg-slate-50';
+    card.innerHTML = `
+      <img src="${url}" alt="${name}" class="w-full object-cover aspect-video" loading="lazy"/>
+      <p class="text-xs text-center text-slate-400 py-1 px-1 truncate">${name}</p>`;
+    previewGrid.appendChild(card);
+  });
+
+  pageLabel.textContent = `${currentPage + 1} / ${totalPages}`;
+  btnPrev.disabled = currentPage === 0;
+  btnNext.disabled = currentPage >= totalPages - 1;
+}
+
+btnPrev.addEventListener('click', () => {
+  if (currentPage > 0) { currentPage--; renderPage(jobId); }
+});
+btnNext.addEventListener('click', () => {
+  const totalPages = Math.ceil(allScreenshots.length / PAGE_SIZE);
+  if (currentPage < totalPages - 1) { currentPage++; renderPage(jobId); }
+});
+
+// ── 生成 DOCX ────────────────────────────────────────────
+btnGenerate.addEventListener('click', async () => {
+  if (!jobId) return;
+  setButtons({ generate: false });
+  setStatus('生成 DOCX 中…');
+  try {
+    const res = await fetch(`./jobs/${jobId}/generate-docx`, { method: 'POST' });
+    if (!res.ok) throw new Error((await res.json()).detail);
+    pollUntilDone(jobId);
+  } catch (err) {
+    showToast(`生成失败：${err.message}`, 'error');
+    setStatus(`生成失败：${err.message}`);
+    setButtons({ generate: true });
+  }
+});
+
+async function pollUntilDone(jid) {
+  for (let i = 0; i < 120; i++) {
+    await sleep(1000);
+    try {
+      const res = await fetch(`./jobs/${jid}`);
+      if (!res.ok) continue;
+      const job = await res.json();
+      if (job.status === 'done') {
+        setStatus('DOCX 已生成，点击下载');
+        setButtons({ download: true });
+        showToast('DOCX 生成完成！', 'success');
+        return;
+      } else if (job.status === 'error') {
+        setStatus(`生成失败：${job.error_message}`);
+        showToast(`生成失败：${job.error_message}`, 'error');
+        setButtons({ generate: true });
+        return;
+      }
+    } catch (_) {}
+  }
+  setStatus('生成超时，请重试');
+  setButtons({ generate: true });
+}
+
+// ── 下载 ─────────────────────────────────────────────────
+btnDownload.addEventListener('click', () => {
+  if (jobId) window.open(`./jobs/${jobId}/download`, '_blank');
+});
+
+// ── 历史记录 ─────────────────────────────────────────────
+document.getElementById('btn-history').addEventListener('click', openHistory);
+
+function openHistory() {
+  historyPanel.classList.remove('translate-x-full');
+  historyOverlay.classList.remove('hidden');
+  loadHistory();
+}
+
+function closeHistory() {
+  historyPanel.classList.add('translate-x-full');
+  historyOverlay.classList.add('hidden');
+}
+
+async function loadHistory() {
+  historyList.innerHTML = '<p class="px-6 py-8 text-sm text-slate-400 text-center">加载中…</p>';
+  try {
+    const res = await fetch('./jobs');
+    if (!res.ok) throw new Error('请求失败');
+    const jobs = await res.json();
+
+    if (jobs.length === 0) {
+      historyList.innerHTML = '<p class="px-6 py-8 text-sm text-slate-400 text-center">暂无历史记录</p>';
+      return;
+    }
+
+    historyList.innerHTML = '';
+    jobs.forEach(job => {
+      const dt = new Date(job.created_at).toLocaleString('zh-CN', { hour12: false });
+      const badgeClass = {
+        pending: 'bg-slate-100 text-slate-600',
+        processing: 'bg-blue-100 text-blue-700',
+        ready: 'bg-yellow-100 text-yellow-700',
+        generating: 'bg-purple-100 text-purple-700',
+        done: 'bg-green-100 text-green-700',
+        error: 'bg-red-100 text-red-700',
+      }[job.status] || 'bg-slate-100 text-slate-600';
+
+      const statusLabel = {
+        pending: '等待中', processing: '处理中', ready: '待生成',
+        generating: '生成中', done: '完成', error: '错误',
+      }[job.status] || job.status;
+
+      const item = document.createElement('div');
+      item.className = 'px-6 py-4 hover:bg-slate-50 transition-colors';
+      item.innerHTML = `
+        <div class="flex items-start justify-between gap-4">
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-1">
+              <span class="text-xs font-medium px-2 py-0.5 rounded-full ${badgeClass}">${statusLabel}</span>
+              ${job.screenshot_count > 0
+                ? `<span class="text-xs text-slate-400">${job.screenshot_count} 张截图</span>`
+                : ''}
+            </div>
+            <p class="text-sm font-medium text-slate-700 truncate">${job.video_filename || '未知文件'}</p>
+            <p class="text-xs text-slate-400 mt-0.5">${dt}</p>
+            ${job.error_message
+              ? `<p class="text-xs text-red-500 mt-1 truncate">${job.error_message}</p>`
+              : ''}
+          </div>
+          <div class="flex items-center gap-1 shrink-0">
+            ${job.has_screenshots
+              ? `<button onclick="viewHistoryJob('${job.job_id}')"
+                   class="text-xs px-3 py-1.5 rounded-lg bg-slate-100 hover:bg-slate-200
+                          text-slate-700 font-medium transition-colors">查看</button>`
+              : ''}
+            ${job.has_docx
+              ? `<a href="./jobs/${job.job_id}/download" target="_blank"
+                   class="text-xs px-3 py-1.5 rounded-lg bg-emerald-100 hover:bg-emerald-200
+                          text-emerald-700 font-medium transition-colors">下载</a>`
+              : ''}
+            <button onclick="deleteJob('${job.job_id}', this)"
+              class="text-xs px-3 py-1.5 rounded-lg bg-red-50 hover:bg-red-100
+                     text-red-600 font-medium transition-colors">删除</button>
+          </div>
+        </div>`;
+      historyList.appendChild(item);
+    });
+  } catch (err) {
+    historyList.innerHTML = `<p class="px-6 py-8 text-sm text-red-400 text-center">加载失败：${err.message}</p>`;
+  }
+}
+
+async function viewHistoryJob(jid) {
+  closeHistory();
+  jobId = jid;
+  allScreenshots = [];
+  currentPage = 0;
+  await loadScreenshots(jid);
+  previewSection.scrollIntoView({ behavior: 'smooth' });
+}
+
+async function deleteJob(jid, btn) {
+  btn.disabled = true;
+  btn.textContent = '…';
+  try {
+    const res = await fetch(`./jobs/${jid}`, { method: 'DELETE' });
+    if (!res.ok) throw new Error((await res.json()).detail);
+    showToast('已删除', 'success');
+    // 移除对应列表项
+    btn.closest('div.px-6').remove();
+    if (historyList.children.length === 0) {
+      historyList.innerHTML = '<p class="px-6 py-8 text-sm text-slate-400 text-center">暂无历史记录</p>';
+    }
+  } catch (err) {
+    showToast(`删除失败：${err.message}`, 'error');
+    btn.disabled = false;
+    btn.textContent = '删除';
+  }
+}
+
+// ── 工具函数 ─────────────────────────────────────────────
+function setStatus(text) { statusLabel.textContent = text; }
+
+function setProgress(pct) {
+  progressBar.style.width = `${Math.min(100, pct)}%`;
+}
+
+function logAppend(text) {
+  log.textContent += text + '\n';
+  log.scrollTop = log.scrollHeight;
+}
+
+function logClear() { log.textContent = ''; }
+
+function setButtons({ start, generate, download } = {}) {
+  if (start !== undefined)    btnStart.disabled    = !start;
+  if (generate !== undefined) btnGenerate.disabled = !generate;
+  if (download !== undefined) btnDownload.disabled = !download;
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function showToast(msg, type = 'success') {
+  const toast = document.getElementById('toast');
+  toast.textContent = msg;
+  toast.className = [
+    'fixed bottom-6 left-1/2 -translate-x-1/2 px-5 py-3 rounded-xl text-sm font-medium',
+    'text-white shadow-lg z-50 transition-all duration-300',
+    type === 'error' ? 'bg-red-500' : 'bg-emerald-500',
+  ].join(' ');
+  toast.style.opacity = '1';
+  setTimeout(() => { toast.style.opacity = '0'; }, 3000);
+}
+</script>
+</body>
+</html>
