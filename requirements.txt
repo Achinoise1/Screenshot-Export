@@ -1,0 +1,10 @@
+opencv-python
+imagehash
+numpy
+Pillow
+python-docx
+fastapi
+uvicorn[standard]
+nicegui
+python-multipart
+httpx[http2]

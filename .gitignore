@@ -1,0 +1,9 @@
+/.venv
+/backend
+/config.py
+/data
+/frontend
+/my-website.conf
+/output.docx
+/screenshots
+/video.mp4
