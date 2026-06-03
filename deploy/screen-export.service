@@ -17,7 +17,7 @@ Environment="BACKEND_ROOT_PATH=/tools/screenshot-export"
 Environment="BACKEND_PORT=8001"
 
 # Optional: relocate data outside the project directory
-# Environment="SCREEN_EXPORT_DATA_DIR=/var/screen-export-data"
+Environment="SCREEN_EXPORT_DATA_DIR=/var/screen-export-data"
 
 Restart=on-failure
 RestartSec=5

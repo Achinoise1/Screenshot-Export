@@ -16,6 +16,7 @@ error() { echo "${BOLD}${RED}[✗]${RESET} $*" >&2; }
 # ── Config ────────────────────────────────────────────────────────────────────
 REMOTE=server
 REMOTE_DIR=/data/projs/Screen-Export
+DATA_DIR=/var/screen-export-data   # must match SCREEN_EXPORT_DATA_DIR in screen-export.service
 
 # ── State tracking (only roll back resources created by this run) ─────────────
 _MODE=${1:-update}
@@ -89,6 +90,9 @@ if [[ $1 == "--init" ]]; then
   step "Deploying build files..."
   ssh $REMOTE "tar xzf /tmp/package.tar.gz -C $REMOTE_DIR && rm /tmp/package.tar.gz"
   ssh $REMOTE "chown -R www-data:www-data $REMOTE_DIR"
+
+  step "Creating data directory..."
+  ssh $REMOTE "mkdir -p $DATA_DIR && chown -R www-data:www-data $DATA_DIR"
 
   step "Setting up Python environment..."
   ssh $REMOTE "apt-get install -y software-properties-common && \
